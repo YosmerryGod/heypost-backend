@@ -149,6 +149,7 @@ export const expenses = sqliteTable("expenses", {
   amount: integer("amount").notNull(),
   paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu"] }).notNull(),
   expenseDate: text("expenseDate").notNull(),
+  status: text("status", { enum: ["Aktif", "Dibatalkan"] }).notNull().default("Aktif"), // [ADDED]
   createdAt: createdAt(),
 }, (table) => [
   index("expenses_outlet_date_idx").on(table.outletId, table.expenseDate),
