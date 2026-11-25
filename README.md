@@ -116,6 +116,7 @@ Frontend harus mengirim cookie pada request tRPC (`credentials: "include"`). Jan
 
 Namespace `store` (khusus owner):
 
+- `store.updateProfile` — mengubah nama toko yang tampil pada identitas akun.
 - `store.createOutlet` — membuat outlet; `copyMenuFromOutletId` bersifat opsional untuk menyalin kategori dan menu.
 - `store.switchOutlet` — mengganti outlet aktif pada sesi owner.
 - `store.updateOutlet` — mengubah nama, alamat, atau status outlet.
