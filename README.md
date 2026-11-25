@@ -138,6 +138,19 @@ Database hanya menyimpan hash barcode. PIN di-hash dengan salt. Lima kegagalan P
 
 Katalog dan transaksi baru selalu memakai outlet aktif dari sesi. Produk dari outlet lain tidak dapat dipakai untuk transaksi maupun diubah.
 
+### Pengeluaran operasional
+
+Pencatatan pengeluaran disimpan terpisah dari transaksi penjualan. Setiap catatan terikat pada toko dan outlet aktif dari sesi; client tidak dapat mengirim atau memilih `storeId` maupun `outletId`.
+
+Namespace tRPC `expenses` (khusus owner/manager):
+
+| Procedure | Fungsi |
+| --- | --- |
+| `expenses.create` | Mencatat kategori, nominal Rupiah, keterangan opsional, metode pembayaran, dan tanggal pengeluaran. |
+| `expenses.list` | Mengambil maksimal 500 catatan pengeluaran outlet aktif; rentang `fromDate` dan `toDate` opsional memakai format `YYYY-MM-DD`. |
+
+Setiap catatan menyimpan identitas owner/karyawan yang membuatnya. API belum menyediakan edit atau hapus agar riwayat pencatatan tidak berubah tanpa jejak. Nominal disimpan sebagai bilangan bulat Rupiah. Kasir tidak memiliki akses ke endpoint pengeluaran; pencatatan dan pembacaan hanya untuk owner/manager.
+
 ## Database lama sebelum autentikasi
 
 Jalankan `npm run db:push` seperti biasa. Kolom tenant pada data lama dibiarkan `NULL` agar migrasi tidak menghapus data dan tidak memberikan data tersebut kepada pendaftar baru secara otomatis.
