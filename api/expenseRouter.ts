@@ -2,11 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { expenses } from "@db/schema";
-import { createRouter, permissionQuery } from "./middleware";
+import { createRouter, ownerQuery, permissionQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 
 const expenseDateSchema = z.string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal harus menggunakan format YYYY-MM-DD.")
+  .regex(/^\\d{4}-\\d{2}-\\d{2}$/, "Tanggal harus menggunakan format YYYY-MM-DD.")
   .refine((value) => {
     const date = new Date(`${value}T00:00:00.000Z`);
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
@@ -55,5 +55,30 @@ export const expenseRouter = createRouter({
     }).returning().all();
 
     return expense;
+  }),
+
+  cancel: ownerQuery.input(z.object({
+    id: z.number().int().positive(),
+  })).mutation(({ ctx, input }) => {
+    const db = getDb();
+    const conditions = and(
+      eq(expenses.id, input.id),
+      eq(expenses.storeId, ctx.auth.storeId),
+      eq(expenses.outletId, ctx.auth.activeOutletId),
+    );
+    const [existing] = db.select().from(expenses).where(conditions).limit(1).all();
+    if (!existing) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Pengeluaran tidak ditemukan." });
+    }
+    if (existing.status === "Dibatalkan") {
+      return { ok: true as const, status: "Dibatalkan" as const };
+    }
+    db.update(expenses).set({ status: "Dibatalkan" })
+      .where(and(conditions, eq(expenses.status, "Aktif"))).run();
+    const [updated] = db.select({ status: expenses.status }).from(expenses).where(conditions).limit(1).all();
+    if (!updated) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Pengeluaran tidak ditemukan." });
+    }
+    return { ok: true as const, status: updated.status };
   }),
 });
