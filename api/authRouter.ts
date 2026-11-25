@@ -19,6 +19,7 @@ import {
 import type { AuthPrincipal } from "./auth/types";
 import { authedQuery, createRouter, publicQuery } from "./middleware";
 import { getDb } from "./queries/connection";
+import { PERMISSION_KEYS, parsePermissions } from "./permissions";
 
 const invalidLogin = () => new TRPCError({
   code: "UNAUTHORIZED",
@@ -39,6 +40,15 @@ function authPayload(auth: AuthPrincipal) {
       .orderBy(asc(outlets.id)).all()
     : db.select().from(outlets).where(eq(outlets.id, auth.activeOutletId)).limit(1).all();
 
+  const permissions = auth.role === "owner"
+    ? [...PERMISSION_KEYS]
+    : (() => {
+      const [employee] = auth.employeeId
+        ? db.select({ permissions: employees.permissions }).from(employees).where(eq(employees.id, auth.employeeId)).limit(1).all()
+        : [];
+      return parsePermissions(employee?.permissions);
+    })();
+
   return {
     principal: {
       name: auth.name,
@@ -46,6 +56,7 @@ function authPayload(auth: AuthPrincipal) {
       role: auth.role,
       userId: auth.userId,
       employeeId: auth.employeeId,
+      permissions,
     },
     store,
     outlets: outletRows,
