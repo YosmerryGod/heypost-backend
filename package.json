@@ -10,7 +10,9 @@
     "check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
-    "db:push": "drizzle-kit push --config drizzle.config.ts"
+    "db:push": "drizzle-kit push --config drizzle.config.ts",
+    "db:seed": "tsx db/seed.ts",
+    "db:attach-legacy": "tsx db/attach-legacy.ts"
   },
   "engines": {
     "node": ">=22"
