@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { authedQuery, createRouter, managerQuery } from "./middleware";
 import { getDb } from "./queries/connection";
+import { saveProductImage } from "./lib/uploads";
 import { categories, outlets, products, transactionItems, transactions } from "@db/schema";
 import type { AuthPrincipal } from "./auth/types";
 
