@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { authedQuery, createRouter, managerQuery } from "./middleware";
+import { assertPermission, createRouter, permissionQuery, permissionQueryAny } from "./middleware";
 import { getDb } from "./queries/connection";
 import { saveProductImage } from "./lib/uploads";
 import { categories, outlets, products, transactionItems, transactions } from "@db/schema";
@@ -31,7 +31,7 @@ function requireCategory(auth: AuthPrincipal, categoryId: number) {
 }
 
 export const posRouter = createRouter({
-  bootstrap: authedQuery.query(({ ctx }) => {
+  bootstrap: permissionQuery("pos.access").query(({ ctx }) => {
     const db = getDb();
     const scope = and(eq(products.storeId, ctx.auth.storeId), eq(products.outletId, ctx.auth.activeOutletId));
     const productRows = db.select().from(products).where(and(scope, eq(products.active, true))).all();
@@ -48,7 +48,7 @@ export const posRouter = createRouter({
     };
   }),
 
-  createCategory: managerQuery.input(z.object({
+  createCategory: permissionQuery("menu.create").input(z.object({
     name: z.string().trim().min(2).max(100),
     sortOrder: z.number().int().min(0).max(9999).default(0),
   })).mutation(({ ctx, input }) => {
@@ -66,7 +66,7 @@ export const posRouter = createRouter({
     }
   }),
 
-  uploadProductImage: managerQuery.input(z.object({ dataUrl: z.string().max(7_000_000) })).mutation(async ({ input }) => {
+  uploadProductImage: permissionQueryAny("menu.create", "menu.edit").input(z.object({ dataUrl: z.string().max(7_000_000) })).mutation(async ({ input }) => {
     try {
       return await saveProductImage(input.dataUrl);
     } catch (error) {
@@ -74,7 +74,7 @@ export const posRouter = createRouter({
     }
   }),
 
-  createProduct: managerQuery.input(productInput).mutation(({ ctx, input }) => {
+  createProduct: permissionQuery("menu.create").input(productInput).mutation(({ ctx, input }) => {
     requireCategory(ctx.auth, input.categoryId);
     const db = getDb();
     const sku = `HP-${randomUUID().slice(0, 10).toUpperCase()}`;
@@ -87,7 +87,7 @@ export const posRouter = createRouter({
     return product;
   }),
 
-  updateProduct: managerQuery.input(productInput.extend({ id: z.number().int().positive() })).mutation(({ ctx, input }) => {
+  updateProduct: permissionQueryAny("menu.edit", "stock.edit").input(productInput.extend({ id: z.number().int().positive() })).mutation(({ ctx, input }) => {
     const { id, ...values } = input;
     requireCategory(ctx.auth, input.categoryId);
     const db = getDb();
@@ -111,7 +111,7 @@ export const posRouter = createRouter({
     return product;
   }),
 
-  archiveProduct: managerQuery.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => {
+  archiveProduct: permissionQuery("menu.edit").input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => {
     const result = getDb().update(products).set({ active: false }).where(and(
       eq(products.id, input.id),
       eq(products.storeId, ctx.auth.storeId),
@@ -121,7 +121,7 @@ export const posRouter = createRouter({
     return { ok: true };
   }),
 
-  createTransaction: authedQuery.input(z.object({
+  createTransaction: permissionQuery("pos.access").input(z.object({
     customerName: z.string().trim().max(120).optional(),
     orderType: z.enum(["Makan di tempat", "Bawa pulang", "Pesan antar"]),
     paymentMethod: z.enum(["Tunai", "QRIS", "Kartu"]),
@@ -207,7 +207,7 @@ export const posRouter = createRouter({
     });
   }),
 
-  transactions: authedQuery.query(({ ctx }) => {
+  transactions: permissionQuery("history.daily.view").query(({ ctx }) => {
     const db = getDb();
     const rows = db.select().from(transactions).where(and(
       eq(transactions.storeId, ctx.auth.storeId),
@@ -219,7 +219,7 @@ export const posRouter = createRouter({
     return rows.map((row) => ({ ...row, items: items.filter((item) => item.transactionId === row.id) }));
   }),
 
-  summary: managerQuery.input(z.object({
+  summary: permissionQuery("reports.sales.view").input(z.object({
     range: z.enum(["today", "week", "month", "all"]).default("week"),
     allOutlets: z.boolean().default(false),
   })).query(({ ctx, input }) => {
