@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "db:push": "drizzle-kit push --config drizzle.config.ts",
     "db:seed": "tsx db/seed.ts",
-    "db:attach-legacy": "tsx db/attach-legacy.ts"
+    "db:attach-legacy": "tsx db/attach-legacy.ts",
+    "db:migrate:permissions": "tsx db/migrate-employee-permissions.ts"
   },
   "engines": {
     "node": ">=22"
