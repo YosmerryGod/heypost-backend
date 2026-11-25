@@ -14,6 +14,14 @@ function ownedOutlet(storeId: number, outletId: number, activeOnly = false) {
 }
 
 export const storeRouter = createRouter({
+  updateProfile: ownerQuery.input(z.object({
+    name: z.string().trim().min(2).max(120),
+  })).mutation(({ ctx, input }) => {
+    getDb().update(stores).set({ name: input.name, updatedAt: new Date() })
+      .where(eq(stores.id, ctx.auth.storeId)).run();
+    return { ok: true, name: input.name };
+  }),
+
   createOutlet: ownerQuery.input(z.object({
     name: z.string().trim().min(2).max(120),
     address: z.string().trim().max(300).optional(),
