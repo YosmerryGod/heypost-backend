@@ -1,4 +1,4 @@
-import { initTRPC } from "@trpc/server";
+import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { log } from "./lib/logger";
@@ -28,3 +28,24 @@ const t = initTRPC.context<TrpcContext>().create({
 
 export const createRouter = t.router;
 export const publicQuery = t.procedure;
+
+export const authedQuery = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.auth) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Silakan login terlebih dahulu." });
+  }
+  return next({ ctx: { ...ctx, auth: ctx.auth } });
+});
+
+export const ownerQuery = authedQuery.use(({ ctx, next }) => {
+  if (ctx.auth.role !== "owner") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Fitur ini hanya untuk owner." });
+  }
+  return next();
+});
+
+export const managerQuery = authedQuery.use(({ ctx, next }) => {
+  if (ctx.auth.role === "kasir") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Kasir tidak memiliki akses ke fitur ini." });
+  }
+  return next();
+});

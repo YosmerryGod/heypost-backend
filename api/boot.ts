@@ -1,14 +1,27 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { cors } from "hono/cors";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
+import { env } from "./lib/env";
+import { googleAuthRoutes } from "./routes/googleAuth";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
+
+app.use("/api/*", cors({
+  origin: env.frontendUrl,
+  credentials: true,
+  allowHeaders: ["Content-Type", "Authorization"],
+  allowMethods: ["GET", "POST", "OPTIONS"],
+  exposeHeaders: [REQUEST_ID_HEADER],
+}));
+
+app.route("/api/auth/google", googleAuthRoutes);
 
 // One middleware for both halves of request observability, because they need the
 // same scope and the same id:
@@ -34,6 +47,7 @@ app.use("*", async (c, next) => {
     // c.header() called before dispatch is dropped on that path. Setting it on
     // the resolved c.res covers every route, including the tRPC one.
     c.res.headers.set(REQUEST_ID_HEADER, requestId);
+    if (c.req.path.startsWith("/api/")) c.res.headers.set("Cache-Control", "no-store");
     // Only /api/* is logged. In production serveStaticFiles() registers a
     // catch-all AFTER this middleware, so a page load pulls in every asset as
     // its own request — logging those would bury the API calls the agent reads
