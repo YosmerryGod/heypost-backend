@@ -31,47 +31,49 @@ const catalog = [
 
 export async function seedIfEmpty() {
   const db = getDb();
-  const existingCategories = await db.select().from(categories).limit(1);
+  const existingCategories = db.select().from(categories).limit(1).all();
   if (existingCategories.length > 0) return;
 
   let sku = 1001;
-  for (const [categoryIndex, [categoryName, rows]] of catalog.entries()) {
-    const [{ id: categoryId }] = await db.insert(categories).values({ name: categoryName, sortOrder: categoryIndex }).$returningId();
-    await db.insert(products).values(rows.map(([name, price, stock, photo]) => ({
-      categoryId,
-      name,
-      price,
-      stock,
-      imageUrl: image(photo),
-      sku: `HP-${sku++}`,
-    })));
-  }
+  db.transaction((tx) => {
+    for (const [categoryIndex, [categoryName, rows]] of catalog.entries()) {
+      const [{ id: categoryId }] = tx.insert(categories).values({ name: categoryName, sortOrder: categoryIndex }).returning({ id: categories.id }).all();
+      tx.insert(products).values(rows.map(([name, price, stock, photo]) => ({
+        categoryId,
+        name,
+        price,
+        stock,
+        imageUrl: image(photo),
+        sku: `HP-${sku++}`,
+      }))).run();
+    }
 
-  const allProducts = await db.select().from(products).limit(5);
-  if (allProducts.length === 0) return;
-  const now = Date.now();
-  for (let day = 6; day >= 0; day--) {
-    const product = allProducts[(6 - day) % allProducts.length];
-    const quantity = (day % 3) + 1;
-    const total = product.price * quantity;
-    const createdAt = new Date(now - day * 86400000 - (day % 4) * 3600000);
-    const [{ id: transactionId }] = await db.insert(transactions).values({
-      invoiceNumber: `HP-DEMO-${day}-${product.id}`,
-      customerName: day % 2 ? "Pelanggan toko" : "Rani",
-      orderType: day % 2 ? "Bawa pulang" : "Makan di tempat",
-      paymentMethod: day % 3 ? "QRIS" : "Tunai",
-      subtotal: total,
-      total,
-      cashReceived: day % 3 ? null : total,
-      createdAt,
-    }).$returningId();
-    await db.insert(transactionItems).values({
-      transactionId,
-      productId: product.id,
-      productName: product.name,
-      unitPrice: product.price,
-      quantity,
-      subtotal: total,
-    });
-  }
+    const allProducts = tx.select().from(products).limit(5).all();
+    if (allProducts.length === 0) return;
+    const now = Date.now();
+    for (let day = 6; day >= 0; day--) {
+      const product = allProducts[(6 - day) % allProducts.length];
+      const quantity = (day % 3) + 1;
+      const total = product.price * quantity;
+      const createdAt = new Date(now - day * 86400000 - (day % 4) * 3600000);
+      const [{ id: transactionId }] = tx.insert(transactions).values({
+        invoiceNumber: `HP-DEMO-${day}-${product.id}`,
+        customerName: day % 2 ? "Pelanggan toko" : "Rani",
+        orderType: day % 2 ? "Bawa pulang" : "Makan di tempat",
+        paymentMethod: day % 3 ? "QRIS" : "Tunai",
+        subtotal: total,
+        total,
+        cashReceived: day % 3 ? null : total,
+        createdAt,
+      }).returning({ id: transactions.id }).all();
+      tx.insert(transactionItems).values({
+        transactionId,
+        productId: product.id,
+        productName: product.name,
+        unitPrice: product.price,
+        quantity,
+        subtotal: total,
+      }).run();
+    }
+  });
 }

@@ -21,30 +21,30 @@ export const posRouter = createRouter({
   bootstrap: publicQuery.query(async () => {
     await ready();
     const db = getDb();
-    const [productRows, categoryRows] = await Promise.all([
-      db.select().from(products).where(eq(products.active, true)),
-      db.select().from(categories),
-    ]);
+    const productRows = db.select().from(products).where(eq(products.active, true)).all();
+    const categoryRows = db.select().from(categories).all();
     return { products: productRows, categories: categoryRows.sort((a, b) => a.sortOrder - b.sortOrder) };
   }),
 
   createProduct: publicQuery.input(productInput).mutation(async ({ input }) => {
     await ready();
+    const db = getDb();
     const sku = `HP-${Date.now().toString().slice(-7)}`;
-    const [{ id }] = await getDb().insert(products).values({ ...input, sku }).$returningId();
-    const [product] = await getDb().select().from(products).where(eq(products.id, id));
+    const [{ id }] = db.insert(products).values({ ...input, sku }).returning({ id: products.id }).all();
+    const [product] = db.select().from(products).where(eq(products.id, id)).all();
     return product;
   }),
 
   updateProduct: publicQuery.input(productInput.extend({ id: z.number().int().positive() })).mutation(async ({ input }) => {
     const { id, ...values } = input;
-    await getDb().update(products).set(values).where(eq(products.id, id));
-    const [product] = await getDb().select().from(products).where(eq(products.id, id));
+    const db = getDb();
+    db.update(products).set(values).where(eq(products.id, id)).run();
+    const [product] = db.select().from(products).where(eq(products.id, id)).all();
     return product;
   }),
 
   archiveProduct: publicQuery.input(z.object({ id: z.number().int().positive() })).mutation(async ({ input }) => {
-    await getDb().update(products).set({ active: false }).where(eq(products.id, input.id));
+    getDb().update(products).set({ active: false }).where(eq(products.id, input.id)).run();
     return { ok: true };
   }),
 
@@ -58,9 +58,9 @@ export const posRouter = createRouter({
   })).mutation(async ({ input }) => {
     await ready();
     const db = getDb();
-    return db.transaction(async (tx) => {
+    return db.transaction((tx) => {
       const ids = input.items.map((item) => item.productId);
-      const rows = await tx.select().from(products).where(inArray(products.id, ids));
+      const rows = tx.select().from(products).where(inArray(products.id, ids)).all();
       const productMap = new Map(rows.map((product) => [product.id, product]));
       for (const item of input.items) {
         const product = productMap.get(item.productId);
@@ -78,7 +78,7 @@ export const posRouter = createRouter({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Uang tunai kurang dari total pembayaran." });
       }
       const invoiceNumber = `HP${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${Date.now().toString().slice(-5)}`;
-      const [{ id: transactionId }] = await tx.insert(transactions).values({
+      const [{ id: transactionId }] = tx.insert(transactions).values({
         invoiceNumber,
         customerName: input.customerName || "Pelanggan toko",
         orderType: input.orderType,
@@ -87,19 +87,19 @@ export const posRouter = createRouter({
         discount: input.discount,
         total,
         cashReceived: input.paymentMethod === "Tunai" ? input.cashReceived : total,
-      }).$returningId();
-      await tx.insert(transactionItems).values(lines.map((line) => ({
+      }).returning({ id: transactions.id }).all();
+      tx.insert(transactionItems).values(lines.map((line) => ({
         transactionId,
         productId: line.product.id,
         productName: line.product.name,
         unitPrice: line.product.price,
         quantity: line.quantity,
         subtotal: line.subtotal,
-      })));
+      }))).run();
       for (const line of lines) {
-        await tx.update(products).set({ stock: line.product.stock - line.quantity }).where(eq(products.id, line.product.id));
+        tx.update(products).set({ stock: line.product.stock - line.quantity }).where(eq(products.id, line.product.id)).run();
       }
-      const [transaction] = await tx.select().from(transactions).where(eq(transactions.id, transactionId));
+      const [transaction] = tx.select().from(transactions).where(eq(transactions.id, transactionId)).all();
       return { ...transaction, items: lines.map((line) => ({ productName: line.product.name, unitPrice: line.product.price, quantity: line.quantity, subtotal: line.subtotal })) };
     });
   }),
@@ -107,16 +107,16 @@ export const posRouter = createRouter({
   transactions: publicQuery.query(async () => {
     await ready();
     const db = getDb();
-    const rows = await db.select().from(transactions).orderBy(desc(transactions.createdAt)).limit(200);
+    const rows = db.select().from(transactions).orderBy(desc(transactions.createdAt)).limit(200).all();
     if (!rows.length) return [];
-    const items = await db.select().from(transactionItems).where(inArray(transactionItems.transactionId, rows.map((row) => row.id)));
+    const items = db.select().from(transactionItems).where(inArray(transactionItems.transactionId, rows.map((row) => row.id))).all();
     return rows.map((row) => ({ ...row, items: items.filter((item) => item.transactionId === row.id) }));
   }),
 
   summary: publicQuery.input(z.object({ range: z.enum(["today", "week", "month", "all"]).default("week") })).query(async ({ input }) => {
     await ready();
     const db = getDb();
-    const rows = await db.select().from(transactions).where(eq(transactions.status, "Selesai")).orderBy(desc(transactions.createdAt));
+    const rows = db.select().from(transactions).where(eq(transactions.status, "Selesai")).orderBy(desc(transactions.createdAt)).all();
     const now = new Date();
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);
@@ -125,7 +125,7 @@ export const posRouter = createRouter({
     if (input.range === "all") start.setTime(0);
     const filtered = rows.filter((row) => row.createdAt >= start);
     const ids = filtered.map((row) => row.id);
-    const items = ids.length ? await db.select().from(transactionItems).where(inArray(transactionItems.transactionId, ids)) : [];
+    const items = ids.length ? db.select().from(transactionItems).where(inArray(transactionItems.transactionId, ids)).all() : [];
     const dailyMap = new Map<string, { date: string; label: string; revenue: number; orders: number }>();
     const days = input.range === "today" ? 1 : input.range === "month" ? 30 : input.range === "all" ? Math.min(30, Math.max(7, Math.ceil((now.getTime() - (filtered.at(-1)?.createdAt.getTime() ?? now.getTime())) / 86400000) + 1)) : 7;
     for (let i = days - 1; i >= 0; i--) {

@@ -1,54 +1,50 @@
-import {
-  bigint,
-  boolean,
-  int,
-  mysqlEnum,
-  mysqlTable,
-  serial,
-  timestamp,
-  varchar,
-} from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const categories = mysqlTable("categories", {
-  id: serial("id").primaryKey(),
-  name: varchar("name", { length: 80 }).notNull().unique(),
-  sortOrder: int("sortOrder").notNull().default(0),
+const createdAt = () => integer("createdAt", { mode: "timestamp_ms" })
+  .notNull()
+  .default(sql`(unixepoch() * 1000)`);
+
+export const categories = sqliteTable("categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  sortOrder: integer("sortOrder").notNull().default(0),
 });
 
-export const products = mysqlTable("products", {
-  id: serial("id").primaryKey(),
-  categoryId: bigint("categoryId", { mode: "number", unsigned: true }).notNull(),
-  name: varchar("name", { length: 160 }).notNull(),
-  sku: varchar("sku", { length: 40 }).notNull().unique(),
-  price: int("price").notNull(),
-  stock: int("stock").notNull().default(0),
-  imageUrl: varchar("imageUrl", { length: 600 }).notNull(),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
+export const products = sqliteTable("products", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  categoryId: integer("categoryId").notNull().references(() => categories.id),
+  name: text("name").notNull(),
+  sku: text("sku").notNull().unique(),
+  price: integer("price").notNull(),
+  stock: integer("stock").notNull().default(0),
+  imageUrl: text("imageUrl").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: createdAt(),
 });
 
-export const transactions = mysqlTable("transactions", {
-  id: serial("id").primaryKey(),
-  invoiceNumber: varchar("invoiceNumber", { length: 40 }).notNull().unique(),
-  customerName: varchar("customerName", { length: 120 }),
-  orderType: mysqlEnum("orderType", ["Makan di tempat", "Bawa pulang", "Pesan antar"]).notNull(),
-  paymentMethod: mysqlEnum("paymentMethod", ["Tunai", "QRIS", "Kartu"]).notNull(),
-  status: mysqlEnum("status", ["Selesai", "Dibatalkan"]).notNull().default("Selesai"),
-  subtotal: int("subtotal").notNull(),
-  discount: int("discount").notNull().default(0),
-  total: int("total").notNull(),
-  cashReceived: int("cashReceived"),
-  createdAt: timestamp("createdAt").notNull().defaultNow(),
+export const transactions = sqliteTable("transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceNumber: text("invoiceNumber").notNull().unique(),
+  customerName: text("customerName"),
+  orderType: text("orderType", { enum: ["Makan di tempat", "Bawa pulang", "Pesan antar"] }).notNull(),
+  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu"] }).notNull(),
+  status: text("status", { enum: ["Selesai", "Dibatalkan"] }).notNull().default("Selesai"),
+  subtotal: integer("subtotal").notNull(),
+  discount: integer("discount").notNull().default(0),
+  total: integer("total").notNull(),
+  cashReceived: integer("cashReceived"),
+  createdAt: createdAt(),
 });
 
-export const transactionItems = mysqlTable("transaction_items", {
-  id: serial("id").primaryKey(),
-  transactionId: bigint("transactionId", { mode: "number", unsigned: true }).notNull(),
-  productId: bigint("productId", { mode: "number", unsigned: true }).notNull(),
-  productName: varchar("productName", { length: 160 }).notNull(),
-  unitPrice: int("unitPrice").notNull(),
-  quantity: int("quantity").notNull(),
-  subtotal: int("subtotal").notNull(),
+export const transactionItems = sqliteTable("transaction_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  transactionId: integer("transactionId").notNull().references(() => transactions.id),
+  productId: integer("productId").notNull().references(() => products.id),
+  productName: text("productName").notNull(),
+  unitPrice: integer("unitPrice").notNull(),
+  quantity: integer("quantity").notNull(),
+  subtotal: integer("subtotal").notNull(),
 });
 
 export type Product = typeof products.$inferSelect;
