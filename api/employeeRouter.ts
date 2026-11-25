@@ -70,6 +70,7 @@ export const employeeRouter = createRouter({
       role: employees.role,
       outletId: employees.outletId,
       active: employees.active,
+      permissions: employees.permissions,
       createdAt: employees.createdAt,
     }).all();
 
