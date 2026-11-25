@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { assertPermission, createRouter, permissionQuery, permissionQueryAny } from "./middleware";
+import { assertPermission, createRouter, ownerQuery, permissionQuery, permissionQueryAny } from "./middleware";
 import { getDb } from "./queries/connection";
 import { saveProductImage } from "./lib/uploads";
 import { categories, outlets, products, transactionItems, transactions } from "@db/schema";
@@ -234,6 +234,149 @@ export const posRouter = createRouter({
           subtotal: line.subtotal,
         })),
       };
+    });
+  }),
+
+  // [ADDED] Edit transaksi hanya untuk owner; stok lama dipulihkan dan stok baru dikurangi secara atomik.
+  updateTransaction: ownerQuery.input(z.object({
+    id: z.number().int().positive(),
+    customerName: z.string().trim().max(120).optional(),
+    orderType: z.enum(["Makan di tempat", "Bawa pulang", "Pesan antar"]),
+    paymentMethod: z.enum(["Tunai", "QRIS", "Kartu"]),
+    discount: z.number().int().min(0),
+    cashReceived: z.number().int().min(0).optional(),
+    items: z.array(z.object({
+      productId: z.number().int().positive(),
+      quantity: z.number().int().min(1).max(999),
+    })).min(1).max(100),
+  })).mutation(({ ctx, input }) => {
+    const db = getDb();
+    return db.transaction((tx) => {
+      const scope = and(
+        eq(transactions.id, input.id),
+        eq(transactions.storeId, ctx.auth.storeId),
+        eq(transactions.outletId, ctx.auth.activeOutletId),
+      );
+      const [current] = tx.select().from(transactions).where(scope).limit(1).all();
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Transaksi tidak ditemukan di outlet ini." });
+      if (current.status !== "Selesai") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Transaksi yang sudah dibatalkan tidak dapat diedit." });
+      }
+      const oldItems = tx.select().from(transactionItems)
+        .where(eq(transactionItems.transactionId, current.id)).all();
+      const oldQuantities = new Map<number, number>();
+      for (const item of oldItems) oldQuantities.set(item.productId, (oldQuantities.get(item.productId) ?? 0) + item.quantity);
+
+      const newQuantities = new Map<number, number>();
+      for (const item of input.items) {
+        newQuantities.set(item.productId, (newQuantities.get(item.productId) ?? 0) + item.quantity);
+        if (newQuantities.get(item.productId)! > 999) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Jumlah per produk maksimal 999." });
+        }
+      }
+      const ids = [...new Set([...oldQuantities.keys(), ...newQuantities.keys()])];
+      const productRows = tx.select().from(products).where(and(
+        inArray(products.id, ids),
+        eq(products.storeId, ctx.auth.storeId),
+        eq(products.outletId, ctx.auth.activeOutletId),
+      )).all();
+      const productMap = new Map(productRows.map((product) => [product.id, product]));
+      for (const productId of ids) {
+        if (!productMap.has(productId)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Produk transaksi tidak ditemukan di outlet ini." });
+        }
+      }
+
+      const availableStock = new Map<number, number>();
+      for (const [productId, product] of productMap) {
+        availableStock.set(productId, product.stock + (oldQuantities.get(productId) ?? 0));
+      }
+      for (const [productId, quantity] of newQuantities) {
+        const product = productMap.get(productId)!;
+        const stock = availableStock.get(productId) ?? 0;
+        if (stock < quantity) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Stok ${product.name} hanya ${stock}.` });
+        }
+      }
+
+      const lines = [...newQuantities].map(([productId, quantity]) => {
+        const product = productMap.get(productId)!;
+        return { product, quantity, subtotal: product.price * quantity };
+      });
+      const subtotal = lines.reduce((sum, line) => sum + line.subtotal, 0);
+      if (input.discount > subtotal) throw new TRPCError({ code: "BAD_REQUEST", message: "Diskon melebihi subtotal." });
+      const total = subtotal - input.discount;
+      const cashReceived = input.paymentMethod === "Tunai" ? (input.cashReceived ?? current.cashReceived ?? 0) : total;
+      if (input.paymentMethod === "Tunai" && cashReceived < total) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Uang tunai kurang dari total pembayaran." });
+      }
+
+      for (const [productId, product] of productMap) {
+        const nextStock = (availableStock.get(productId) ?? product.stock) - (newQuantities.get(productId) ?? 0);
+        tx.update(products).set({ stock: nextStock }).where(and(
+          eq(products.id, productId),
+          eq(products.storeId, ctx.auth.storeId),
+          eq(products.outletId, ctx.auth.activeOutletId),
+        )).run();
+      }
+      tx.delete(transactionItems).where(eq(transactionItems.transactionId, current.id)).run();
+      tx.insert(transactionItems).values(lines.map((line) => ({
+        transactionId: current.id,
+        productId: line.product.id,
+        productName: line.product.name,
+        unitPrice: line.product.price,
+        quantity: line.quantity,
+        subtotal: line.subtotal,
+      }))).run();
+      tx.update(transactions).set({
+        customerName: input.customerName || "Pelanggan toko",
+        orderType: input.orderType,
+        paymentMethod: input.paymentMethod,
+        subtotal,
+        discount: input.discount,
+        total,
+        cashReceived,
+      }).where(scope).run();
+      const [updated] = tx.select().from(transactions).where(scope).limit(1).all();
+      return { ...updated, items: tx.select().from(transactionItems).where(eq(transactionItems.transactionId, current.id)).all() };
+    });
+  }),
+
+  // [ADDED] Pembatalan idempoten; stok dikembalikan sekali dan status tetap tercatat untuk riwayat.
+  cancelTransaction: ownerQuery.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => {
+    const db = getDb();
+    return db.transaction((tx) => {
+      const scope = and(
+        eq(transactions.id, input.id),
+        eq(transactions.storeId, ctx.auth.storeId),
+        eq(transactions.outletId, ctx.auth.activeOutletId),
+      );
+      const [current] = tx.select().from(transactions).where(scope).limit(1).all();
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Transaksi tidak ditemukan di outlet ini." });
+      if (current.status === "Dibatalkan") return { ok: true, status: current.status };
+      const items = tx.select().from(transactionItems).where(eq(transactionItems.transactionId, current.id)).all();
+      const quantities = new Map<number, number>();
+      for (const item of items) quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+      const ids = [...quantities.keys()];
+      const productRows = ids.length ? tx.select().from(products).where(and(
+        inArray(products.id, ids),
+        eq(products.storeId, ctx.auth.storeId),
+        eq(products.outletId, ctx.auth.activeOutletId),
+      )).all() : [];
+      const productMap = new Map(productRows.map((product) => [product.id, product]));
+      if (productMap.size !== quantities.size) {
+        throw new TRPCError({ code: "CONFLICT", message: "Stok tidak dapat dipulihkan karena data produk tidak lengkap." });
+      }
+      for (const [productId, quantity] of quantities) {
+        const product = productMap.get(productId)!;
+        tx.update(products).set({ stock: product.stock + quantity }).where(and(
+          eq(products.id, productId),
+          eq(products.storeId, ctx.auth.storeId),
+          eq(products.outletId, ctx.auth.activeOutletId),
+        )).run();
+      }
+      tx.update(transactions).set({ status: "Dibatalkan" }).where(scope).run();
+      return { ok: true, status: "Dibatalkan" as const };
     });
   }),
 
