@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
-import { categories, outlets, products, sessions } from "@db/schema";
+import { categories, outlets, products, sessions, stores } from "@db/schema";
 import { createRouter, ownerQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 
