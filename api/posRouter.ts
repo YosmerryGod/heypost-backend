@@ -13,7 +13,7 @@ const productInput = z.object({
   categoryId: z.number().int().positive(),
   price: z.number().int().min(100).max(100_000_000),
   stock: z.number().int().min(0).max(1_000_000),
-  imageUrl: z.string().url().max(600),
+  imageUrl: z.string().url().max(600).nullable(),
 });
 
 function tenant(auth: AuthPrincipal) {
