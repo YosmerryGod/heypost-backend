@@ -5,6 +5,7 @@ import { employees, outlets, sessions } from "@db/schema";
 import { hashPassword, hashToken, randomToken } from "./auth/security";
 import { createRouter, ownerQuery } from "./middleware";
 import { getDb } from "./queries/connection";
+import { DEFAULT_EMPLOYEE_PERMISSIONS, permissionsSchema } from "./permissions";
 
 const pinSchema = z.string().regex(/^\d{6}$/, "PIN harus 6 digit angka.");
 
@@ -35,6 +36,7 @@ export const employeeRouter = createRouter({
       outletId: employees.outletId,
       outletName: outlets.name,
       active: employees.active,
+      permissions: employees.permissions,
       lockedUntil: employees.lockedUntil,
       lastLoginAt: employees.lastLoginAt,
       createdAt: employees.createdAt,
@@ -49,6 +51,7 @@ export const employeeRouter = createRouter({
     role: z.enum(["manager", "kasir"]),
     outletId: z.number().int().positive(),
     pin: pinSchema,
+    permissions: permissionsSchema.optional(),
   })).mutation(async ({ ctx, input }) => {
     requireOutlet(ctx.auth.storeId, input.outletId);
     const barcode = `HP-${randomToken(24)}`;
@@ -58,6 +61,7 @@ export const employeeRouter = createRouter({
       outletId: input.outletId,
       name: input.name,
       role: input.role,
+      permissions: JSON.stringify(input.permissions ?? DEFAULT_EMPLOYEE_PERMISSIONS[input.role]),
       pinHash,
       barcodeHash: hashToken(barcode),
     }).returning({
@@ -80,6 +84,7 @@ export const employeeRouter = createRouter({
     outletId: z.number().int().positive().optional(),
     active: z.boolean().optional(),
     pin: pinSchema.optional(),
+    permissions: permissionsSchema.optional(),
   })).mutation(async ({ ctx, input }) => {
     requireEmployee(ctx.auth.storeId, input.id);
     if (input.outletId) requireOutlet(ctx.auth.storeId, input.outletId);
@@ -88,6 +93,8 @@ export const employeeRouter = createRouter({
     getDb().update(employees).set({
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.role !== undefined ? { role: input.role } : {}),
+      ...(input.permissions !== undefined ? { permissions: JSON.stringify(input.permissions) } : {}),
+      ...(input.role !== undefined && input.permissions === undefined ? { permissions: JSON.stringify(DEFAULT_EMPLOYEE_PERMISSIONS[input.role]) } : {}),
       ...(input.outletId !== undefined ? { outletId: input.outletId } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
       ...(pinHash ? { pinHash } : {}),
