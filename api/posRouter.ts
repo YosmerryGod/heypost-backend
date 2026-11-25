@@ -96,6 +96,15 @@ export const posRouter = createRouter({
       eq(products.storeId, ctx.auth.storeId),
       eq(products.outletId, ctx.auth.activeOutletId),
     );
+    const [currentProduct] = db.select().from(products).where(scope).limit(1).all();
+    if (!currentProduct) throw new TRPCError({ code: "NOT_FOUND", message: "Produk tidak ditemukan di outlet ini." });
+    const menuChanged = values.name !== currentProduct.name
+      || values.categoryId !== currentProduct.categoryId
+      || values.price !== currentProduct.price
+      || values.imageUrl !== currentProduct.imageUrl;
+    const stockChanged = values.stock !== currentProduct.stock;
+    if (menuChanged) assertPermission(ctx.auth, "menu.edit");
+    if (stockChanged) assertPermission(ctx.auth, "stock.edit");
     db.update(products).set(values).where(scope).run();
     const [product] = db.select().from(products).where(scope).limit(1).all();
     if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Produk tidak ditemukan di outlet ini." });
