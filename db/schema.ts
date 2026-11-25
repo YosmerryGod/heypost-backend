@@ -106,7 +106,7 @@ export const products = sqliteTable("products", {
   sku: text("sku").notNull(),
   price: integer("price").notNull(),
   stock: integer("stock").notNull().default(0),
-  imageUrl: text("imageUrl").notNull(),
+  imageUrl: text("imageUrl"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: createdAt(),
 }, (table) => [
