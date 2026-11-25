@@ -1,5 +1,7 @@
+import { pathToFileURL } from "node:url";
+import { eq } from "drizzle-orm";
 import { getDb } from "../api/queries/connection";
-import { categories, products, transactionItems, transactions } from "./schema";
+import { categories, outlets, products, transactionItems, transactions } from "./schema";
 
 const image = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=480&q=82`;
 
@@ -29,35 +31,46 @@ const catalog = [
   ]],
 ] as const;
 
-export async function seedIfEmpty() {
+export function seedOutlet(outletId: number) {
   const db = getDb();
-  const existingCategories = db.select().from(categories).limit(1).all();
-  if (existingCategories.length > 0) return;
+  const [outlet] = db.select().from(outlets).where(eq(outlets.id, outletId)).limit(1).all();
+  if (!outlet) throw new Error(`Outlet ${outletId} tidak ditemukan.`);
+  const [existing] = db.select({ id: categories.id }).from(categories)
+    .where(eq(categories.outletId, outletId)).limit(1).all();
+  if (existing) throw new Error(`Outlet ${outletId} sudah memiliki kategori; seed dibatalkan.`);
 
   let sku = 1001;
-  db.transaction((tx) => {
+  return db.transaction((tx) => {
     for (const [categoryIndex, [categoryName, rows]] of catalog.entries()) {
-      const [{ id: categoryId }] = tx.insert(categories).values({ name: categoryName, sortOrder: categoryIndex }).returning({ id: categories.id }).all();
+      const [{ id: categoryId }] = tx.insert(categories).values({
+        storeId: outlet.storeId,
+        outletId,
+        name: categoryName,
+        sortOrder: categoryIndex,
+      }).returning({ id: categories.id }).all();
       tx.insert(products).values(rows.map(([name, price, stock, photo]) => ({
+        storeId: outlet.storeId,
+        outletId,
         categoryId,
         name,
         price,
         stock,
         imageUrl: image(photo),
-        sku: `HP-${sku++}`,
+        sku: `HP-${outletId}-${sku++}`,
       }))).run();
     }
 
-    const allProducts = tx.select().from(products).limit(5).all();
-    if (allProducts.length === 0) return;
+    const outletProducts = tx.select().from(products).where(eq(products.outletId, outletId)).limit(5).all();
     const now = Date.now();
     for (let day = 6; day >= 0; day--) {
-      const product = allProducts[(6 - day) % allProducts.length];
+      const product = outletProducts[(6 - day) % outletProducts.length];
       const quantity = (day % 3) + 1;
       const total = product.price * quantity;
       const createdAt = new Date(now - day * 86400000 - (day % 4) * 3600000);
       const [{ id: transactionId }] = tx.insert(transactions).values({
-        invoiceNumber: `HP-DEMO-${day}-${product.id}`,
+        storeId: outlet.storeId,
+        outletId,
+        invoiceNumber: `HP-DEMO-${outletId}-${day}-${product.id}`,
         customerName: day % 2 ? "Pelanggan toko" : "Rani",
         orderType: day % 2 ? "Bawa pulang" : "Makan di tempat",
         paymentMethod: day % 3 ? "QRIS" : "Tunai",
@@ -75,5 +88,22 @@ export async function seedIfEmpty() {
         subtotal: total,
       }).run();
     }
+    return { outletId, products: 15, transactions: 7 };
+  });
+}
+
+async function main() {
+  const outletId = Number(process.env.SEED_OUTLET_ID);
+  if (!Number.isInteger(outletId) || outletId <= 0) {
+    throw new Error("Isi SEED_OUTLET_ID dengan ID outlet milik owner yang akan diisi data demo.");
+  }
+  const result = seedOutlet(outletId);
+  console.log(`Seed selesai: ${result.products} produk dan ${result.transactions} transaksi demo untuk outlet ${result.outletId}.`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
   });
 }
