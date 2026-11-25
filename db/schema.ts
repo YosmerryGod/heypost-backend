@@ -54,6 +54,7 @@ export const employees = sqliteTable("employees", {
   outletId: integer("outletId").notNull().references(() => outlets.id),
   name: text("name").notNull(),
   role: text("role", { enum: ["manager", "kasir"] }).notNull(),
+  permissions: text("permissions").notNull().default("[]"),
   pinHash: text("pinHash").notNull(),
   barcodeHash: text("barcodeHash").notNull().unique(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
