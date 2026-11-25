@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { expenses } from "@db/schema";
@@ -17,7 +18,7 @@ export const expenseRouter = createRouter({
     toDate: expenseDateSchema.optional(),
   }).optional()).query(({ ctx, input }) => {
     if (input?.fromDate && input.toDate && input.fromDate > input.toDate) {
-      return [];
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Rentang tanggal tidak valid." });
     }
 
     const conditions = [
