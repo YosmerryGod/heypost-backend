@@ -76,7 +76,21 @@ googleAuthRoutes.get("/callback", async (c) => {
       }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!tokenResponse.ok) throw new Error("Google token exchange failed");
+    if (!tokenResponse.ok) {
+      let googleError = "unknown_error";
+      try {
+        const failure = await tokenResponse.json() as { error?: unknown };
+        if (typeof failure.error === "string") googleError = failure.error.slice(0, 100);
+      } catch {
+        // Google dapat mengembalikan respons non-JSON; status HTTP tetap dicatat.
+      }
+      log.error("Google OAuth failed", {
+        stage: "token_exchange",
+        status: tokenResponse.status,
+        googleError,
+      });
+      return c.redirect(oauthErrorRedirect());
+    }
     const token = await tokenResponse.json() as { access_token?: string };
     if (!token.access_token) throw new Error("Google access token missing");
 
