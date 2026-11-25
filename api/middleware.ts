@@ -2,6 +2,11 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { log } from "./lib/logger";
+import { employees } from "@db/schema";
+import { eq } from "drizzle-orm";
+import { getDb } from "./queries/connection";
+import type { PermissionKey } from "./permissions";
+import { parsePermissions } from "./permissions";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -46,6 +51,35 @@ export const ownerQuery = authedQuery.use(({ ctx, next }) => {
 export const managerQuery = authedQuery.use(({ ctx, next }) => {
   if (ctx.auth.role === "kasir") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Kasir tidak memiliki akses ke fitur ini." });
+  }
+  return next();
+});
+
+
+export function assertPermission(auth: { role: string; employeeId: number | null }, permission: PermissionKey) {
+  if (auth.role === "owner") return;
+  if (!auth.employeeId) throw new TRPCError({ code: "FORBIDDEN", message: "Akses tidak diizinkan." });
+  const [employee] = getDb().select({ permissions: employees.permissions }).from(employees)
+    .where(eq(employees.id, auth.employeeId)).limit(1).all();
+  if (!employee || !parsePermissions(employee.permissions).includes(permission)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Anda tidak memiliki izin untuk fitur ini." });
+  }
+}
+
+export const permissionQuery = (permission: PermissionKey) => authedQuery.use(({ ctx, next }) => {
+  assertPermission(ctx.auth, permission);
+  return next();
+});
+
+export const permissionQueryAny = (...permissions: PermissionKey[]) => authedQuery.use(({ ctx, next }) => {
+  if (ctx.auth.role !== "owner") {
+    let allowed = false;
+    for (const permission of permissions) {
+      try { assertPermission(ctx.auth, permission); allowed = true; break; } catch (error) {
+        if (error instanceof TRPCError && error.code !== "FORBIDDEN") throw error;
+      }
+    }
+    if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: "Anda tidak memiliki izin untuk fitur ini." });
   }
   return next();
 });
