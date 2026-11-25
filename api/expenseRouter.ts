@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod";
 import { expenses } from "@db/schema";
-import { createRouter, managerQuery } from "./middleware";
+import { createRouter, permissionQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 
 const expenseDateSchema = z.string()
@@ -13,7 +13,7 @@ const expenseDateSchema = z.string()
   }, "Tanggal tidak valid.");
 
 export const expenseRouter = createRouter({
-  list: managerQuery.input(z.object({
+  list: permissionQuery("expenses.daily.view").input(z.object({
     fromDate: expenseDateSchema.optional(),
     toDate: expenseDateSchema.optional(),
   }).optional()).query(({ ctx, input }) => {
@@ -35,7 +35,7 @@ export const expenseRouter = createRouter({
       .all();
   }),
 
-  create: managerQuery.input(z.object({
+  create: permissionQuery("expenses.daily.create").input(z.object({
     category: z.string().trim().min(2).max(60),
     description: z.string().trim().max(500).optional(),
     amount: z.number().int().min(1).max(1_000_000_000_000),
