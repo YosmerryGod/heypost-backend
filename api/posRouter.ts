@@ -66,6 +66,14 @@ export const posRouter = createRouter({
     }
   }),
 
+  uploadProductImage: managerQuery.input(z.object({ dataUrl: z.string().max(7_000_000) })).mutation(async ({ input }) => {
+    try {
+      return await saveProductImage(input.dataUrl);
+    } catch (error) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Foto gagal diunggah." });
+    }
+  }),
+
   createProduct: managerQuery.input(productInput).mutation(({ ctx, input }) => {
     requireCategory(ctx.auth, input.categoryId);
     const db = getDb();
