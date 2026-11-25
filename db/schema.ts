@@ -136,6 +136,24 @@ export const transactions = sqliteTable("transactions", {
   index("transactions_store_created_idx").on(table.storeId, table.createdAt),
 ]);
 
+// [ADDED] Pengeluaran dipisahkan dari transaksi penjualan agar omzet tidak tercampur.
+export const expenses = sqliteTable("expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  storeId: integer("storeId").notNull().references(() => stores.id),
+  outletId: integer("outletId").notNull().references(() => outlets.id),
+  userId: integer("userId").references(() => users.id),
+  employeeId: integer("employeeId").references(() => employees.id),
+  category: text("category").notNull(),
+  description: text("description"),
+  amount: integer("amount").notNull(),
+  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu"] }).notNull(),
+  expenseDate: text("expenseDate").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("expenses_outlet_date_idx").on(table.outletId, table.expenseDate),
+  index("expenses_store_date_idx").on(table.storeId, table.expenseDate),
+]);
+
 export const transactionItems = sqliteTable("transaction_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   transactionId: integer("transactionId").notNull().references(() => transactions.id),
@@ -157,4 +175,5 @@ export type Product = typeof products.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
 export type TransactionItem = typeof transactionItems.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
 export type Role = "owner" | Employee["role"];
