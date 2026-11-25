@@ -5,7 +5,7 @@ import { employees, outlets, sessions } from "@db/schema";
 import { hashPassword, hashToken, randomToken } from "./auth/security";
 import { createRouter, ownerQuery } from "./middleware";
 import { getDb } from "./queries/connection";
-import { DEFAULT_EMPLOYEE_PERMISSIONS, permissionsSchema } from "./permissions";
+import { DEFAULT_EMPLOYEE_PERMISSIONS, parsePermissions, permissionsSchema } from "./permissions";
 
 const pinSchema = z.string().regex(/^\d{6}$/, "PIN harus 6 digit angka.");
 
@@ -43,7 +43,7 @@ export const employeeRouter = createRouter({
     }).from(employees)
       .innerJoin(outlets, eq(outlets.id, employees.outletId))
       .where(eq(employees.storeId, ctx.auth.storeId))
-      .orderBy(desc(employees.createdAt)).all();
+      .orderBy(desc(employees.createdAt)).all().map((employee) => ({ ...employee, permissions: parsePermissions(employee.permissions) }));
   }),
 
   create: ownerQuery.input(z.object({
@@ -75,7 +75,7 @@ export const employeeRouter = createRouter({
     }).all();
 
     // The plaintext barcode is returned only here. The database stores its hash.
-    return { ...employee, barcode };
+    return { ...employee, permissions: parsePermissions(employee.permissions), barcode };
   }),
 
   update: ownerQuery.input(z.object({
