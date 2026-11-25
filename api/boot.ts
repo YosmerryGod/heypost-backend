@@ -94,7 +94,7 @@ app.onError((err, c) => {
 export default app;
 
 const { serve } = await import("@hono/node-server");
-const port = parseInt(process.env.PORT || "3000");
+const port = parseInt(process.env.PORT || "3111");
 serve({ fetch: app.fetch, port }, () => {
   log.info(`Server running on http://localhost:${port}/`);
 });
