@@ -48,6 +48,20 @@ export const posRouter = createRouter({
     };
   }),
 
+  // [ADDED] Daftar manajemen memuat produk aktif dan nonaktif; POS tetap memakai bootstrap aktif saja.
+  listProducts: permissionQueryAny("menu.create", "menu.edit", "stock.edit").query(({ ctx }) => {
+    const db = getDb();
+    const productRows = db.select().from(products).where(and(
+      eq(products.storeId, ctx.auth.storeId),
+      eq(products.outletId, ctx.auth.activeOutletId),
+    )).all();
+    const categoryRows = db.select().from(categories).where(and(
+      eq(categories.storeId, ctx.auth.storeId),
+      eq(categories.outletId, ctx.auth.activeOutletId),
+    )).all().sort((a, b) => a.sortOrder - b.sortOrder);
+    return { products: productRows, categories: categoryRows };
+  }),
+
   createCategory: permissionQuery("menu.create").input(z.object({
     name: z.string().trim().min(2).max(100),
     sortOrder: z.number().int().min(0).max(9999).default(0),
@@ -108,6 +122,22 @@ export const posRouter = createRouter({
     db.update(products).set(values).where(scope).run();
     const [product] = db.select().from(products).where(scope).limit(1).all();
     if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Produk tidak ditemukan di outlet ini." });
+    return product;
+  }),
+
+  // [ADDED] Mengubah status menu dua arah tanpa menghapus data atau riwayat transaksi.
+  setProductActive: permissionQuery("menu.edit").input(z.object({
+    id: z.number().int().positive(),
+    active: z.boolean(),
+  })).mutation(({ ctx, input }) => {
+    const scope = and(
+      eq(products.id, input.id),
+      eq(products.storeId, ctx.auth.storeId),
+      eq(products.outletId, ctx.auth.activeOutletId),
+    );
+    const result = getDb().update(products).set({ active: input.active }).where(scope).run();
+    if (!result.changes) throw new TRPCError({ code: "NOT_FOUND", message: "Produk tidak ditemukan di outlet ini." });
+    const [product] = getDb().select().from(products).where(scope).limit(1).all();
     return product;
   }),
 
