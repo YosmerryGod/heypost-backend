@@ -18,6 +18,7 @@ const updatedAt = () => integer("updatedAt", { mode: "timestamp_ms" })
 export const stores = sqliteTable("stores", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
+  logoUrl: text("logoUrl"), // [ADDED]
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -27,6 +28,7 @@ export const outlets = sqliteTable("outlets", {
   storeId: integer("storeId").notNull().references(() => stores.id),
   name: text("name").notNull(),
   address: text("address"),
+  whatsappNumber: text("whatsappNumber"), // [ADDED]
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -34,6 +36,23 @@ export const outlets = sqliteTable("outlets", {
   uniqueIndex("outlets_store_name_unique").on(table.storeId, table.name),
   index("outlets_store_idx").on(table.storeId),
 ]);
+
+// [ADDED] Preferensi struk berlaku untuk seluruh outlet dalam satu toko.
+export const receiptSettings = sqliteTable("receipt_settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  storeId: integer("storeId").notNull().unique().references(() => stores.id),
+  showLogo: integer("showLogo", { mode: "boolean" }).notNull().default(true),
+  showStoreName: integer("showStoreName", { mode: "boolean" }).notNull().default(true),
+  showOutletName: integer("showOutletName", { mode: "boolean" }).notNull().default(true),
+  showAddress: integer("showAddress", { mode: "boolean" }).notNull().default(true),
+  showWhatsapp: integer("showWhatsapp", { mode: "boolean" }).notNull().default(false),
+  showCashier: integer("showCashier", { mode: "boolean" }).notNull().default(true),
+  showCustomer: integer("showCustomer", { mode: "boolean" }).notNull().default(false),
+  showHeyPostWatermark: integer("showHeyPostWatermark", { mode: "boolean" }).notNull().default(false),
+  footerMessage: text("footerMessage"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -169,6 +188,7 @@ export const transactionItems = sqliteTable("transaction_items", {
 ]);
 
 export type Store = typeof stores.$inferSelect;
+export type ReceiptSettings = typeof receiptSettings.$inferSelect; // [ADDED]
 export type Outlet = typeof outlets.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Employee = typeof employees.$inferSelect;
