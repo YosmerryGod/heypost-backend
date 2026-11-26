@@ -116,10 +116,15 @@ Frontend harus mengirim cookie pada request tRPC (`credentials: "include"`). Jan
 
 Namespace `store` (khusus owner):
 
-- `store.updateProfile` — mengubah nama toko yang tampil pada identitas akun.
+- `store.updateProfile` — mengubah nama toko dan/atau URL logo.
+- `store.uploadLogo` — upload logo JPG, PNG, atau WebP maksimal 5 MB; file disimpan di `uploads/stores`.
+- `store.getReceiptSettings` — mengambil preferensi struk toko, sekaligus membuat konfigurasi default jika belum ada.
+- `store.updateReceiptSettings` — mengubah preferensi tampilan struk dan pesan footer.
 - `store.createOutlet` — membuat outlet; `copyMenuFromOutletId` bersifat opsional untuk menyalin kategori dan menu.
 - `store.switchOutlet` — mengganti outlet aktif pada sesi owner.
-- `store.updateOutlet` — mengubah nama, alamat, atau status outlet.
+- `store.updateOutlet` — mengubah nama, alamat, nomor WhatsApp, atau status outlet.
+
+Preferensi struk disimpan per toko dan berlaku lintas outlet. Nomor WhatsApp disimpan per outlet. Opsi struk yang tersedia: logo, nama toko, nama outlet, alamat, WhatsApp, kasir, pelanggan, watermark HeyPost, dan pesan footer. Logo dapat diakses melalui `GET /uploads/stores/:filename`.
 
 Namespace `employees` (khusus owner):
 
