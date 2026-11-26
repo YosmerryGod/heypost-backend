@@ -3,7 +3,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { categories, outlets, products, receiptSettings, sessions, stores } from "@db/schema"; // [MODIFIED]
 import { saveStoreLogo } from "./lib/uploads"; // [ADDED]
-import { createRouter, ownerQuery } from "./middleware";
+import { createRouter, ownerQuery, permissionQuery } from "./middleware"; // [MODIFIED]
 import { getDb } from "./queries/connection";
 
 function ownedOutlet(storeId: number, outletId: number, activeOnly = false) {
@@ -51,7 +51,7 @@ export const storeRouter = createRouter({
   }),
 
   // [ADDED] Ambil preferensi struk; baris default dibuat otomatis untuk toko lama.
-  getReceiptSettings: ownerQuery.query(({ ctx }) => {
+  getReceiptSettings: permissionQuery("pos.access").query(({ ctx }) => { // [MODIFIED]
     const db = getDb();
     db.insert(receiptSettings).values({ storeId: ctx.auth.storeId }).onConflictDoNothing().run();
     const [settings] = db.select().from(receiptSettings)
