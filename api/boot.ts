@@ -10,7 +10,7 @@ import { handleClientLog } from "./lib/clientlog";
 import { env } from "./lib/env";
 import { googleAuthRoutes } from "./routes/googleAuth";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
-import { readProductImage } from "./lib/uploads";
+import { readProductImage, readStoreLogo } from "./lib/uploads"; // [MODIFIED]
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -92,6 +92,16 @@ app.get("/", (c) => c.json({ service: "heypost-backend", status: "ok" }));
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/uploads/products/:filename", async (c) => {
   const image = await readProductImage(c.req.param("filename"));
+  if (!image) return c.notFound();
+  c.header("Content-Type", image.contentType);
+  c.header("Cache-Control", "public, max-age=31536000, immutable");
+  c.header("X-Content-Type-Options", "nosniff");
+  return c.body(new Uint8Array(image.buffer));
+});
+
+// [ADDED] Endpoint publik untuk menampilkan logo toko pada struk.
+app.get("/uploads/stores/:filename", async (c) => {
+  const image = await readStoreLogo(c.req.param("filename"));
   if (!image) return c.notFound();
   c.header("Content-Type", image.contentType);
   c.header("Cache-Control", "public, max-age=31536000, immutable");
