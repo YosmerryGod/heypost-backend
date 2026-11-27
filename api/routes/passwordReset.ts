@@ -152,8 +152,8 @@ passwordResetRoutes.post("/reset", async (c) => {
 
   const passwordHash = await hashPassword(parsed.data.password);
   const db = getDb();
-  const completed = db.transaction((tx) => {
-    const [current] = tx.select().from(passwordResetTokens)
+  const completed = db.$client.transaction(() => {
+    const [current] = db.select().from(passwordResetTokens)
       .where(and(
         eq(passwordResetTokens.id, resetRecord.id),
         isNull(passwordResetTokens.usedAt),
@@ -161,16 +161,16 @@ passwordResetRoutes.post("/reset", async (c) => {
       )).limit(1).all();
     if (!current) return false;
 
-    tx.update(passwordResetTokens)
+    db.update(passwordResetTokens)
       .set({ usedAt: new Date() })
       .where(eq(passwordResetTokens.id, current.id))
       .run();
-    tx.update(users)
+    db.update(users)
       .set({ passwordHash, updatedAt: new Date() })
       .where(eq(users.id, current.userId))
       .run();
-    tx.delete(sessions).where(eq(sessions.userId, current.userId)).run();
-    tx.delete(passwordResetTokens)
+    db.delete(sessions).where(eq(sessions.userId, current.userId)).run();
+    db.delete(passwordResetTokens)
       .where(and(eq(passwordResetTokens.userId, current.userId), isNull(passwordResetTokens.usedAt)))
       .run();
     return true;
