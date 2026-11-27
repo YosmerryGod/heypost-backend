@@ -13,4 +13,6 @@ export const env = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
   googleRedirectUri: process.env.GOOGLE_REDIRECT_URI || `${publicApiUrl}/api/auth/google/callback`,
   googleSuccessUrl: process.env.GOOGLE_SUCCESS_URL || `${frontendUrl}/auth/callback`,
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  emailFrom: process.env.EMAIL_FROM || "",
 };
