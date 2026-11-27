@@ -106,6 +106,18 @@ export const sessions = sqliteTable("sessions", {
 // Nullable tenant columns keep pre-auth databases migratable without deleting
 // rows. Protected procedures never read NULL tenant data. Use db/attach-legacy.ts
 // to assign those rows to an owner-controlled outlet explicitly.
+export const passwordResetTokens = sqliteTable("password_reset_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("tokenHash").notNull().unique(),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  usedAt: integer("usedAt", { mode: "timestamp_ms" }),
+  createdAt: createdAt(),
+}, (table) => [
+  index("password_reset_tokens_user_idx").on(table.userId),
+  index("password_reset_tokens_expiry_idx").on(table.expiresAt),
+]);
+
 export const categories = sqliteTable("categories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   storeId: integer("storeId").references(() => stores.id),
