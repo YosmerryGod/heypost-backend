@@ -211,3 +211,30 @@ export type Transaction = typeof transactions.$inferSelect;
 export type TransactionItem = typeof transactionItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Role = "owner" | Employee["role"];
+
+
+// [ADDED] State OAuth mobile sementara, disimpan agar proses tetap valid lintas worker/restart.
+export const mobileOAuthStates = sqliteTable("mobile_oauth_states", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  stateHash: text("stateHash").notNull().unique(),
+  verifier: text("verifier").notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("mobile_oauth_states_expiry_idx").on(table.expiresAt),
+]);
+
+// [ADDED] Kode pertukaran sekali pakai sebelum session bearer diberikan ke aplikasi.
+export const mobileOAuthCodes = sqliteTable("mobile_oauth_codes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  codeHash: text("codeHash").notNull().unique(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  storeId: integer("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  outletId: integer("outletId").notNull().references(() => outlets.id, { onDelete: "cascade" }),
+  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  usedAt: integer("usedAt", { mode: "timestamp_ms" }),
+  createdAt: createdAt(),
+}, (table) => [
+  index("mobile_oauth_codes_expiry_idx").on(table.expiresAt),
+  index("mobile_oauth_codes_user_idx").on(table.userId),
+]);
