@@ -36,9 +36,16 @@ function authPayload(auth: AuthPrincipal) {
   if (!store) throw new TRPCError({ code: "NOT_FOUND", message: "Toko tidak ditemukan." });
 
   const outletRows = auth.role === "owner"
-    ? db.select().from(outlets).where(and(eq(outlets.storeId, auth.storeId), eq(outlets.active, true)))
+    ? db.select().from(outlets).where(eq(outlets.storeId, auth.storeId))
       .orderBy(asc(outlets.id)).all()
     : db.select().from(outlets).where(eq(outlets.id, auth.activeOutletId)).limit(1).all();
+
+  // [ADDED] Outlet tambahan dapat memakai nomor WhatsApp dari outlet utama.
+  const mainOutlet = db.select().from(outlets).where(eq(outlets.storeId, auth.storeId)).orderBy(asc(outlets.id)).limit(1).get();
+  const effectiveOutletRows = outletRows.map((outlet) => ({
+    ...outlet,
+    whatsappNumber: outlet.whatsappUseMain ? (mainOutlet?.whatsappNumber ?? null) : outlet.whatsappNumber,
+  }));
 
   const permissions = auth.role === "owner"
     ? [...PERMISSION_KEYS]
@@ -59,7 +66,7 @@ function authPayload(auth: AuthPrincipal) {
       permissions,
     },
     store,
-    outlets: outletRows,
+    outlets: effectiveOutletRows,
     activeOutletId: auth.activeOutletId,
   };
 }

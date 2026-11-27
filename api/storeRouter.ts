@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { categories, outlets, products, receiptSettings, sessions, stores } from "@db/schema"; // [MODIFIED]
+import { categories, outlets, products, receiptSettings, sessions, stores, transactionItems } from "@db/schema"; // [MODIFIED]
 import { saveStoreLogo } from "./lib/uploads"; // [ADDED]
 import { createRouter, ownerQuery, permissionQuery } from "./middleware"; // [MODIFIED]
 import { getDb } from "./queries/connection";
@@ -88,6 +89,10 @@ export const storeRouter = createRouter({
     name: z.string().trim().min(2).max(120),
     address: z.string().trim().max(300).optional(),
     whatsappNumber: z.string().trim().max(30).nullable().optional(), // [ADDED]
+    whatsappUseMain: z.boolean().optional(), // [ADDED]
+    openingTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(), // [ADDED]
+    closingTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(), // [ADDED]
+    timezone: z.enum(["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"]).optional(), // [ADDED]
     copyMenuFromOutletId: z.number().int().positive().optional(),
   })).mutation(({ ctx, input }) => {
     const db = getDb();
@@ -100,7 +105,11 @@ export const storeRouter = createRouter({
         storeId: ctx.auth.storeId,
         name: input.name,
         address: input.address,
-        whatsappNumber: input.whatsappNumber,
+        whatsappNumber: input.whatsappUseMain ? null : input.whatsappNumber,
+        whatsappUseMain: input.whatsappUseMain ?? false,
+        openingTime: input.openingTime,
+        closingTime: input.closingTime,
+        timezone: input.timezone ?? "Asia/Makassar",
       }).returning().all();
 
       if (input.copyMenuFromOutletId) {
@@ -144,6 +153,101 @@ export const storeRouter = createRouter({
     });
   }),
 
+  // [ADDED] Ganti menu outlet tujuan dengan salinan outlet sumber secara atomik.
+  // Produk lama hanya dinonaktifkan agar relasi item transaksi dan riwayat tetap utuh.
+  syncOutletMenu: ownerQuery.input(z.object({
+    targetOutletId: z.number().int().positive(),
+    sourceOutletId: z.number().int().positive(),
+  }).refine((input) => input.targetOutletId !== input.sourceOutletId, {
+    message: "Outlet sumber dan tujuan harus berbeda.",
+  })).mutation(({ ctx, input }) => {
+    const db = getDb();
+    ownedOutlet(ctx.auth.storeId, input.targetOutletId);
+    ownedOutlet(ctx.auth.storeId, input.sourceOutletId);
+
+    return db.transaction((tx) => {
+      const sourceCategories = tx.select().from(categories).where(and(
+        eq(categories.storeId, ctx.auth.storeId),
+        eq(categories.outletId, input.sourceOutletId),
+      )).orderBy(asc(categories.sortOrder)).all();
+
+      const targetCategories = tx.select().from(categories).where(and(
+        eq(categories.storeId, ctx.auth.storeId),
+        eq(categories.outletId, input.targetOutletId),
+      )).all();
+      const categoryIds = new Map<number, number>();
+
+      for (const sourceCategory of sourceCategories) {
+        const existing = targetCategories.find((item) => item.name === sourceCategory.name);
+        if (existing) {
+          tx.update(categories).set({ sortOrder: sourceCategory.sortOrder }).where(eq(categories.id, existing.id)).run();
+          categoryIds.set(sourceCategory.id, existing.id);
+        } else {
+          const [created] = tx.insert(categories).values({
+            storeId: ctx.auth.storeId,
+            outletId: input.targetOutletId,
+            name: sourceCategory.name,
+            sortOrder: sourceCategory.sortOrder,
+          }).returning({ id: categories.id }).all();
+          categoryIds.set(sourceCategory.id, created.id);
+        }
+      }
+
+      const sourceProducts = tx.select().from(products).where(and(
+        eq(products.storeId, ctx.auth.storeId),
+        eq(products.outletId, input.sourceOutletId),
+      )).all();
+
+      // [MODIFIED] Ganti katalog lama: hapus produk tanpa riwayat transaksi,
+      // tetapi pertahankan produk yang masih direferensikan transaksi sebagai arsip nonaktif.
+      const previousProducts = tx.select().from(products).where(and(
+        eq(products.storeId, ctx.auth.storeId),
+        eq(products.outletId, input.targetOutletId),
+      )).all();
+      for (const previous of previousProducts) {
+        const [historicalItem] = tx.select({ id: transactionItems.id }).from(transactionItems)
+          .where(eq(transactionItems.productId, previous.id)).limit(1).all();
+        if (historicalItem) {
+          tx.update(products).set({ active: false }).where(eq(products.id, previous.id)).run();
+        } else {
+          tx.delete(products).where(eq(products.id, previous.id)).run();
+        }
+      }
+
+      for (const product of sourceProducts) {
+        const categoryId = categoryIds.get(product.categoryId);
+        if (!categoryId) continue;
+        tx.insert(products).values({
+          storeId: ctx.auth.storeId,
+          outletId: input.targetOutletId,
+          categoryId,
+          name: product.name,
+          sku: `HP-${randomUUID().slice(0, 10).toUpperCase()}`,
+          price: product.price,
+          stock: product.stock,
+          imageUrl: product.imageUrl,
+          active: product.active,
+        }).run();
+      }
+
+      // [ADDED] Bersihkan kategori lama yang sudah tidak dipakai; kategori yang
+      // masih dibutuhkan produk arsip transaksi tetap dipertahankan.
+      const retainedCategoryIds = new Set(categoryIds.values());
+      for (const previousCategory of targetCategories) {
+        if (retainedCategoryIds.has(previousCategory.id)) continue;
+        const [remainingProduct] = tx.select({ id: products.id }).from(products)
+          .where(eq(products.categoryId, previousCategory.id)).limit(1).all();
+        if (!remainingProduct) tx.delete(categories).where(eq(categories.id, previousCategory.id)).run();
+      }
+
+      return {
+        ok: true,
+        copiedCategories: sourceCategories.length,
+        copiedProducts: sourceProducts.length,
+      };
+    });
+  }),
+
   switchOutlet: ownerQuery.input(z.object({
     outletId: z.number().int().positive(),
   })).mutation(({ ctx, input }) => {
@@ -160,26 +264,24 @@ export const storeRouter = createRouter({
     name: z.string().trim().min(2).max(120).optional(),
     address: z.string().trim().max(300).nullable().optional(),
     whatsappNumber: z.string().trim().max(30).nullable().optional(), // [ADDED]
+    whatsappUseMain: z.boolean().optional(), // [ADDED]
+    openingTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(), // [ADDED]
+    closingTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(), // [ADDED]
+    timezone: z.enum(["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"]).optional(), // [ADDED]
     active: z.boolean().optional(),
   })).mutation(({ ctx, input }) => {
     const db = getDb();
     ownedOutlet(ctx.auth.storeId, input.id);
-    if (input.active === false) {
-      if (ctx.auth.activeOutletId === input.id) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Pindah ke outlet lain sebelum menonaktifkan outlet aktif." });
-      }
-      const [remaining] = db.select({ id: outlets.id }).from(outlets).where(and(
-        eq(outlets.storeId, ctx.auth.storeId),
-        eq(outlets.active, true),
-        ne(outlets.id, input.id),
-      )).limit(1).all();
-      if (!remaining) throw new TRPCError({ code: "BAD_REQUEST", message: "Toko harus memiliki minimal satu outlet aktif." });
-    }
-
+    // [MODIFIED] Status buka/tutup dapat diubah langsung dari daftar, termasuk outlet yang sedang dipilih.
+    // Outlet nonaktif tetap tercatat; pengguna dapat mengaktifkannya kembali kapan saja.
     db.update(outlets).set({
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(input.address !== undefined ? { address: input.address } : {}),
       ...(input.whatsappNumber !== undefined ? { whatsappNumber: input.whatsappNumber } : {}), // [ADDED]
+      ...(input.whatsappUseMain !== undefined ? { whatsappUseMain: input.whatsappUseMain } : {}), // [ADDED]
+      ...(input.openingTime !== undefined ? { openingTime: input.openingTime } : {}), // [ADDED]
+      ...(input.closingTime !== undefined ? { closingTime: input.closingTime } : {}), // [ADDED]
+      ...(input.timezone !== undefined ? { timezone: input.timezone } : {}), // [ADDED]
       ...(input.active !== undefined ? { active: input.active } : {}),
       updatedAt: new Date(),
     }).where(and(eq(outlets.id, input.id), eq(outlets.storeId, ctx.auth.storeId))).run();

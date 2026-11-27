@@ -29,6 +29,10 @@ export const outlets = sqliteTable("outlets", {
   name: text("name").notNull(),
   address: text("address"),
   whatsappNumber: text("whatsappNumber"), // [ADDED]
+  whatsappUseMain: integer("whatsappUseMain", { mode: "boolean" }).notNull().default(false), // [ADDED]
+  openingTime: text("openingTime").notNull().default("08:00"), // [ADDED]
+  closingTime: text("closingTime").notNull().default("22:00"), // [ADDED]
+  timezone: text("timezone").notNull().default("Asia/Makassar"), // [ADDED]
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -156,7 +160,7 @@ export const transactions = sqliteTable("transactions", {
   invoiceNumber: text("invoiceNumber").notNull().unique(),
   customerName: text("customerName"),
   orderType: text("orderType", { enum: ["Makan di tempat", "Bawa pulang", "Pesan antar"] }).notNull(),
-  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu"] }).notNull(),
+  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu", "Transfer"] }).notNull(),
   status: text("status", { enum: ["Selesai", "Dibatalkan"] }).notNull().default("Selesai"),
   subtotal: integer("subtotal").notNull(),
   discount: integer("discount").notNull().default(0),
@@ -178,7 +182,7 @@ export const expenses = sqliteTable("expenses", {
   category: text("category").notNull(),
   description: text("description"),
   amount: integer("amount").notNull(),
-  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu"] }).notNull(),
+  paymentMethod: text("paymentMethod", { enum: ["Tunai", "QRIS", "Kartu", "Transfer"] }).notNull(),
   expenseDate: text("expenseDate").notNull(),
   status: text("status", { enum: ["Aktif", "Dibatalkan"] }).notNull().default("Aktif"), // [ADDED]
   createdAt: createdAt(),

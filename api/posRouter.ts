@@ -154,7 +154,7 @@ export const posRouter = createRouter({
   createTransaction: permissionQuery("pos.access").input(z.object({
     customerName: z.string().trim().max(120).optional(),
     orderType: z.enum(["Makan di tempat", "Bawa pulang", "Pesan antar"]),
-    paymentMethod: z.enum(["Tunai", "QRIS", "Kartu"]),
+    paymentMethod: z.enum(["Tunai", "QRIS", "Kartu", "Transfer"]),
     discount: z.number().int().min(0).default(0),
     cashReceived: z.number().int().min(0).optional(),
     items: z.array(z.object({
@@ -242,7 +242,7 @@ export const posRouter = createRouter({
     id: z.number().int().positive(),
     customerName: z.string().trim().max(120).optional(),
     orderType: z.enum(["Makan di tempat", "Bawa pulang", "Pesan antar"]),
-    paymentMethod: z.enum(["Tunai", "QRIS", "Kartu"]),
+    paymentMethod: z.enum(["Tunai", "QRIS", "Kartu", "Transfer"]),
     discount: z.number().int().min(0),
     cashReceived: z.number().int().min(0).optional(),
     items: z.array(z.object({
@@ -447,7 +447,7 @@ export const posRouter = createRouter({
       current.revenue += item.subtotal;
       productMap.set(item.productName, current);
     }
-    const payments = ["Tunai", "QRIS", "Kartu"].map((method) => ({
+    const payments = ["Tunai", "QRIS", "Kartu", "Transfer"].map((method) => ({
       method,
       total: filtered.filter((row) => row.paymentMethod === method).reduce((sum, row) => sum + row.total, 0),
     }));
