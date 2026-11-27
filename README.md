@@ -90,6 +90,25 @@ Endpoint Google:
 
 Login Google pertama kali otomatis membuat owner, satu toko, dan Outlet Utama. Email Google harus terverifikasi. Jika email sudah memiliki akun owner, akun Google dihubungkan ke akun tersebut.
 
+### Login Google aplikasi mobile Expo
+
+Tambahkan environment berikut di backend:
+
+```env
+GOOGLE_MOBILE_REDIRECT_URI=https://apihey.doodweb.tech/api/auth/google/mobile/callback
+MOBILE_APP_REDIRECT_URI=heypost://auth/google
+```
+
+Tambahkan `GOOGLE_MOBILE_REDIRECT_URI` sebagai Authorized redirect URI pada OAuth Client Web yang sama di Google Cloud Console. `MOBILE_APP_REDIRECT_URI` harus sama dengan scheme dan path Deep Link aplikasi Expo.
+
+Endpoint mobile:
+
+- `POST /api/auth/google/mobile/start` — mengembalikan `authorizationUrl` untuk dibuka melalui browser autentikasi sistem.
+- `GET /api/auth/google/mobile/callback` — callback Google, memvalidasi state dan PKCE, lalu mengarahkan ke Deep Link aplikasi dengan kode sementara.
+- `POST /api/auth/google/mobile/exchange` dengan body `{"code":"kode-dari-deep-link"}` — menukar kode sekali pakai yang berlaku 60 detik menjadi session bearer. Aplikasi menyimpan token menggunakan SecureStore dan mengirimkannya sebagai `Authorization: Bearer <token>`.
+
+State OAuth disimpan di database dan berlaku 10 menit. Kode pertukaran disimpan dalam bentuk hash, sekali pakai, dan berlaku 60 detik. Web OAuth lama tetap menggunakan endpoint `/start` dan `/callback` serta cookie browser.
+
 ## Reset password owner
 
 Reset password menggunakan email melalui Resend. Konfigurasikan environment berikut di server:
