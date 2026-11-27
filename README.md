@@ -90,6 +90,26 @@ Endpoint Google:
 
 Login Google pertama kali otomatis membuat owner, satu toko, dan Outlet Utama. Email Google harus terverifikasi. Jika email sudah memiliki akun owner, akun Google dihubungkan ke akun tersebut.
 
+## Reset password owner
+
+Reset password menggunakan email melalui Resend. Konfigurasikan environment berikut di server:
+
+```env
+RESEND_API_KEY=isi-api-key-resend
+EMAIL_FROM=HeyPost <alamat-pengirim-terverifikasi>
+```
+
+Domain pengirim harus sudah diverifikasi di Resend. Halaman frontend harus menyediakan rute `/reset-password` yang membaca query `token` dari tautan email.
+
+Endpoint:
+
+- `POST /api/auth/password/request` dengan body `{"email":"owner@example.com"}` — mengirim instruksi reset jika email terdaftar. Respons dibuat generik untuk mencegah enumerasi akun.
+- `POST /api/auth/password/reset` dengan body `{"token":"token-dari-email","password":"password-baru"}` — mengubah password menggunakan token sekali pakai.
+
+Token disimpan dalam bentuk hash, berlaku 30 menit, dan permintaan dibatasi maksimal 3 kali per alamat IP/email dalam 15 menit. Setelah password berubah, seluruh sesi owner yang ada dicabut. Password baru minimal 8 karakter. Email tidak dikirim jika konfigurasi Resend belum tersedia; endpoint tetap memberikan respons generik.
+
+Setelah memperbarui backend, jalankan `npm run db:push` agar tabel `password_reset_tokens` dibuat. Backup database terlebih dahulu.
+
 ## API autentikasi
 
 Semua procedure berikut berada di namespace tRPC:
