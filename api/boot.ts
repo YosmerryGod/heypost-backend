@@ -9,6 +9,7 @@ import { log } from "./lib/logger";
 import { handleClientLog } from "./lib/clientlog";
 import { env } from "./lib/env";
 import { googleAuthRoutes } from "./routes/googleAuth";
+import { passwordResetRoutes } from "./routes/passwordReset";
 import { REQUEST_ID_HEADER, runWithRequestId } from "./lib/requestcontext";
 import { readProductImage, readStoreLogo } from "./lib/uploads"; // [MODIFIED]
 
@@ -23,6 +24,7 @@ app.use("/api/*", cors({
 }));
 
 app.route("/api/auth/google", googleAuthRoutes);
+app.route("/api/auth/password", passwordResetRoutes);
 
 // One middleware for both halves of request observability, because they need the
 // same scope and the same id:
